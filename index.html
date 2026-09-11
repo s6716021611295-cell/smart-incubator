@@ -1,0 +1,1225 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Incubator - ระบบตู้ฟักไข่อัจฉริยะ</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Chart.js for real-time statistics -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Google Fonts: Inter & Kanit -->
+    <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#f0f9ff',
+                            100: '#e0f2fe',
+                            500: '#0284c7',
+                            600: '#0284c7',
+                            700: '#0369a1',
+                            800: '#075985',
+                            900: '#0c4a6e',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Kanit', 'Inter', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            font-family: 'Kanit', 'Inter', sans-serif;
+            background-color: #f8fafc;
+            color: #1e293b;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .glass-card {
+            background: rgba(255, 255, 255, 0.92);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(226, 232, 240, 0.8);
+        }
+        .pulse-ring {
+            box-shadow: 0 0 0 0 rgba(2, 132, 199, 0.4);
+            animation: pulse-ring 2s infinite;
+        }
+        @keyframes pulse-ring {
+            0% { box-shadow: 0 0 0 0 rgba(2, 132, 199, 0.5); }
+            70% { box-shadow: 0 0 0 12px rgba(2, 132, 199, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(2, 132, 199, 0); }
+        }
+        .alert-hatch-pulse {
+            animation: alertPulse 1.2s infinite alternate;
+        }
+        @keyframes alertPulse {
+            0% { transform: scale(1); filter: drop-shadow(0 0 5px rgba(245, 158, 11, 0.4)); }
+            100% { transform: scale(1.03); filter: drop-shadow(0 0 15px rgba(245, 158, 11, 0.8)); }
+        }
+        /* Custom scrollbar for mobile cleanliness */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f5f9;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col justify-between pb-20 md:pb-0">
+
+    <!-- Top Header Bar -->
+    <header class="sticky top-0 z-40 bg-white/90 backdrop-blur-md border-b border-slate-200">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-brand-600 to-sky-400 flex items-center justify-center text-white shadow-md shadow-brand-500/20">
+                    <i class="fa-solid font-bold fa-egg text-xl"></i>
+                </div>
+                <div>
+                    <h1 class="font-bold text-lg leading-tight text-slate-800">Smart Incubator</h1>
+                    <p class="text-xs text-brand-600 font-medium flex items-center gap-1">
+                        <span class="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
+                        ESP32 WiFi Connected
+                    </p>
+                </div>
+            </div>
+
+            <div class="flex items-center space-x-2 sm:space-x-3">
+                <!-- Simulation mode toggle -->
+                <button id="simToggleBtn" onclick="toggleSimulation()" class="px-3 py-1.5 text-xs font-medium rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 transition flex items-center gap-1.5 border border-slate-300">
+                    <i class="fa-solid fa-flask text-brand-500"></i>
+                    <span id="simStatusText">จำลองข้อมูล: เปิด</span>
+                </button>
+                <!-- Quick Alert Sound toggle -->
+                <button onclick="toggleAudioMute()" id="muteBtn" class="p-2 text-slate-500 hover:text-brand-600 rounded-lg hover:bg-slate-100 transition" title="เปิด/ปิด เสียงแจ้งเตือน">
+                    <i class="fa-solid fa-bell text-lg" id="muteIcon"></i>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content Grid -->
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 flex-grow w-full">
+        
+        <!-- Tab Navigation Buttons (Desktop & Tablet top layout) -->
+        <nav class="hidden md:flex space-x-2 border-b border-slate-200 pb-3 mb-6">
+            <button onclick="switchTab('dashboard')" id="tab-dashboard" class="tab-btn px-4 py-2 text-sm font-semibold rounded-lg bg-brand-600 text-white shadow-sm flex items-center gap-2 transition">
+                <i class="fa-solid fa-gauge-high"></i> หน้าหลัก (Real-Time)
+            </button>
+            <button onclick="switchTab('stats')" id="tab-stats" class="tab-btn px-4 py-2 text-sm font-semibold rounded-lg text-slate-600 hover:bg-slate-100 transition flex items-center gap-2">
+                <i class="fa-solid fa-chart-line"></i> สถิติ & ประวัติการทำงาน
+            </button>
+            <button onclick="switchTab('esp')" id="tab-esp" class="tab-btn px-4 py-2 text-sm font-semibold rounded-lg text-slate-600 hover:bg-slate-100 transition flex items-center gap-2">
+                <i class="fa-solid fa-microchip"></i> เชื่อมต่อ ESP32 / Code
+            </button>
+            <button onclick="switchTab('report')" id="tab-report" class="tab-btn px-4 py-2 text-sm font-semibold rounded-lg text-slate-600 hover:bg-slate-100 transition flex items-center gap-2">
+                <i class="fa-solid fa-triangle-exclamation"></i> รายงานปัญหา / บันทึก
+            </button>
+        </nav>
+
+        <!-- Hatching Urgent Banner (Conditional trigger when close to hatching) -->
+        <div id="hatchAlertBanner" class="hidden mb-6 bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 text-white rounded-2xl p-4 sm:p-5 shadow-lg shadow-amber-500/20 alert-hatch-pulse">
+            <div class="flex flex-col sm:flex-row items-center justify-between gap-4">
+                <div class="flex items-center space-x-4">
+                    <div class="w-12 h-12 bg-white/20 backdrop-blur-md rounded-full flex items-center justify-center text-2xl shrink-0">
+                        🐣
+                    </div>
+                    <div>
+                        <h3 class="font-bold text-lg text-white">แจ้งเตือนสำคัญ: ไข่กำลังจะฟักออกมา!</h3>
+                        <p class="text-amber-100 text-sm">เข้าสู่ช่วง 3 วันสุดท้าย (Day <span id="bannerDayNum">19</span>) กรุณาหยุดระบบกลับไข่อัตโนมัติ และเพิ่มความชื้นเป็น 65-75%</p>
+                    </div>
+                </div>
+                <button onclick="openHatchModal()" class="w-full sm:w-auto px-5 py-2.5 bg-white text-amber-700 font-bold rounded-xl shadow hover:bg-amber-50 transition text-sm text-center">
+                    ดูคำแนะนำ & จัดการระบบ
+                </button>
+            </div>
+        </div>
+
+        <!-- ================= PAGE 1: DASHBOARD ================= -->
+        <div id="page-dashboard" class="tab-page space-y-6">
+            
+            <!-- Top Status Bar & Preset Selector -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <!-- Egg Preset & Countdown Card -->
+                <div class="glass-card rounded-2xl p-5 shadow-sm border border-slate-200/80 bg-white">
+                    <div class="flex justify-between items-center mb-4">
+                        <span class="text-xs font-bold uppercase tracking-wider text-slate-400">ชนิดไข่ที่ฟักอยู่</span>
+                        <button onclick="openPresetModal()" class="text-xs text-brand-600 font-semibold hover:underline flex items-center gap-1">
+                            <i class="fa-solid fa-sliders"></i> เปลี่ยนประเภท
+                        </button>
+                    </div>
+                    <div class="flex items-center space-x-4">
+                        <div class="w-14 h-14 rounded-2xl bg-brand-50 flex items-center justify-center text-3xl text-brand-600 border border-brand-100">
+                            🐔
+                        </div>
+                        <div>
+                            <h3 id="presetName" class="font-bold text-xl text-slate-800">ไข่ไก่ (Chicken Egg)</h3>
+                            <p class="text-xs text-slate-500">ระยะเวลาฟักรวม: <span id="presetTotalDays">21</span> วัน</p>
+                        </div>
+                    </div>
+
+                    <div class="mt-5 pt-4 border-t border-slate-100">
+                        <div class="flex justify-between text-sm mb-1 font-semibold">
+                            <span class="text-slate-600">นับถอยหลังการฟัก</span>
+                            <span class="text-brand-600" id="dayProgressText">วันที่ 18 จาก 21 วัน</span>
+                        </div>
+                        <div class="w-full bg-slate-100 h-3 rounded-full overflow-hidden p-0.5 border border-slate-200">
+                            <div id="dayProgressBar" class="bg-gradient-to-r from-brand-500 to-sky-400 h-full rounded-full transition-all duration-500" style="width: 85.7%"></div>
+                        </div>
+                        <div class="flex justify-between items-center mt-3 text-xs text-slate-500">
+                            <span>เหลือเวลาอีกประมาณ: <strong id="remainingDaysText" class="text-slate-700">3 วัน</strong></span>
+                            <span id="hatchBadge" class="px-2 py-0.5 bg-amber-100 text-amber-700 font-bold rounded-full text-[10px]">เตรียมฟัก</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Quick Environment Metrics Overview -->
+                <div class="lg:col-span-2 grid grid-cols-2 sm:grid-cols-4 gap-4">
+                    <!-- Temp Card -->
+                    <div class="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-sm flex flex-col justify-between">
+                        <div class="flex justify-between items-start">
+                            <span class="text-xs font-semibold text-slate-400">อุณหภูมิปัจจุบัน</span>
+                            <div class="w-8 h-8 rounded-lg bg-rose-50 text-rose-500 flex items-center justify-center text-sm">
+                                <i class="fa-solid fa-temperature-three-quarters"></i>
+                            </div>
+                        </div>
+                        <div class="mt-2">
+                            <div class="text-2xl sm:text-3xl font-extrabold text-slate-800 tracking-tight">
+                                <span id="currentTemp">37.5</span><span class="text-base font-normal text-slate-500">°C</span>
+                            </div>
+                            <p class="text-[11px] text-slate-500 mt-1">เป้าหมาย: <span id="targetTempText">37.5</span>°C</p>
+                        </div>
+                    </div>
+
+                    <!-- Humidity Card -->
+                    <div class="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-sm flex flex-col justify-between">
+                        <div class="flex justify-between items-start">
+                            <span class="text-xs font-semibold text-slate-400">ความชื้นสัมพัทธ์</span>
+                            <div class="w-8 h-8 rounded-lg bg-sky-50 text-sky-500 flex items-center justify-center text-sm">
+                                <i class="fa-solid fa-droplet"></i>
+                            </div>
+                        </div>
+                        <div class="mt-2">
+                            <div class="text-2xl sm:text-3xl font-extrabold text-slate-800 tracking-tight">
+                                <span id="currentHum">62</span><span class="text-base font-normal text-slate-500">%</span>
+                            </div>
+                            <p class="text-[11px] text-slate-500 mt-1">เป้าหมาย: <span id="targetHumText">60-65</span>%</p>
+                        </div>
+                    </div>
+
+                    <!-- Turning Motor Card -->
+                    <div class="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-sm flex flex-col justify-between">
+                        <div class="flex justify-between items-start">
+                            <span class="text-xs font-semibold text-slate-400">สถานะการพลิกไข่</span>
+                            <div class="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-500 flex items-center justify-center text-sm">
+                                <i class="fa-solid fa-rotate"></i>
+                            </div>
+                        </div>
+                        <div class="mt-2">
+                            <div id="turnerStatusBadge" class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700">
+                                <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span> ทำงานอัตโนมัติ
+                            </div>
+                            <p class="text-[11px] text-slate-500 mt-2">รอบถัดไป: <span id="nextTurnTimer" class="font-medium text-slate-700">42 นาที</span></p>
+                        </div>
+                    </div>
+
+                    <!-- Sensor / Door System Health -->
+                    <div class="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-sm flex flex-col justify-between">
+                        <div class="flex justify-between items-start">
+                            <span class="text-xs font-semibold text-slate-400">ระบบตู้ฟัก</span>
+                            <div class="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-500 flex items-center justify-center text-sm">
+                                <i class="fa-solid fa-shield-halved"></i>
+                            </div>
+                        </div>
+                        <div class="mt-2">
+                            <div class="text-sm font-bold text-slate-800 flex items-center gap-1.5">
+                                <span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span> ประตูปิดสนิท
+                            </div>
+                            <p class="text-[11px] text-slate-500 mt-2">แรงดันไฟ 24V/12V ปกติ</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Live Actuator Control & Hardware State -->
+            <div class="bg-white rounded-2xl p-6 border border-slate-200/80 shadow-sm">
+                <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+                    <div>
+                        <h2 class="font-bold text-lg text-slate-800 flex items-center gap-2">
+                            <i class="fa-solid fa-sliders text-brand-600"></i> ควบคุมอุปกรณ์ในตู้ฟักไข่ (Actuators Status)
+                        </h2>
+                        <p class="text-xs text-slate-500">แสดงสถานะอุปกรณ์ฮาร์ดแวร์ Relay / Motor / Fogger ตามจริงจาก ESP32</p>
+                    </div>
+
+                    <!-- Auto/Manual switch -->
+                    <div class="flex items-center space-x-2 bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs font-semibold">
+                        <button id="modeAutoBtn" onclick="setControlMode('auto')" class="px-3 py-1.5 rounded-lg bg-white shadow-sm text-brand-600 transition">โหมดอัตโนมัติ (Auto)</button>
+                        <button id="modeManualBtn" onclick="setControlMode('manual')" class="px-3 py-1.5 rounded-lg text-slate-500 hover:text-slate-800 transition">โหมดควบคุมเอง (Manual)</button>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <!-- Heater Status -->
+                    <div class="p-4 rounded-xl border border-slate-100 bg-slate-50/50 flex items-center justify-between">
+                        <div class="flex items-center space-x-3">
+                            <div id="heaterIconBg" class="w-10 h-10 rounded-xl bg-slate-200 text-slate-500 flex items-center justify-center transition">
+                                <i class="fa-solid fa-fire text-lg"></i>
+                            </div>
+                            <div>
+                                <h4 class="font-semibold text-sm text-slate-800">หลอดความร้อน (Heater)</h4>
+                                <p class="text-xs text-slate-500" id="heaterSub">ควบคุมอุณหภูมิ 220V Relay</p>
+                            </div>
+                        </div>
+                        <div class="flex items-center">
+                            <span id="heaterStatusText" class="px-2.5 py-1 text-xs font-bold rounded-lg bg-slate-200 text-slate-600">OFF</span>
+                        </div>
+                    </div>
+
+                    <!-- Ultrasonic Fogger Status -->
+                    <div class="p-4 rounded-xl border border-slate-100 bg-slate-50/50 flex items-center justify-between">
+                        <div class="flex items-center space-x-3">
+                            <div id="foggerIconBg" class="w-10 h-10 rounded-xl bg-slate-200 text-slate-500 flex items-center justify-center transition">
+                                <i class="fa-solid fa-cloud-rain text-lg"></i>
+                            </div>
+                            <div>
+                                <h4 class="font-semibold text-sm text-slate-800">เครื่องทำความชื้น</h4>
+                                <p class="text-xs text-slate-500" id="foggerSub">Ultrasonic Humidifier</p>
+                            </div>
+                        </div>
+                        <div class="flex items-center">
+                            <span id="foggerStatusText" class="px-2.5 py-1 text-xs font-bold rounded-lg bg-sky-100 text-sky-700">ON</span>
+                        </div>
+                    </div>
+
+                    <!-- Fan Status -->
+                    <div class="p-4 rounded-xl border border-slate-100 bg-slate-50/50 flex items-center justify-between">
+                        <div class="flex items-center space-x-3">
+                            <div id="fanIconBg" class="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-600 flex items-center justify-center transition">
+                                <i class="fa-solid fa-fan text-lg animate-spin" style="animation-duration: 3s"></i>
+                            </div>
+                            <div>
+                                <h4 class="font-semibold text-sm text-slate-800">พัดลมหมุนเวียน (Fan)</h4>
+                                <p class="text-xs text-slate-500">12V Air Circulation</p>
+                            </div>
+                        </div>
+                        <div class="flex items-center">
+                            <span id="fanStatusText" class="px-2.5 py-1 text-xs font-bold rounded-lg bg-emerald-100 text-emerald-700">ON</span>
+                        </div>
+                    </div>
+
+                    <!-- Egg Motor Turner -->
+                    <div class="p-4 rounded-xl border border-slate-100 bg-slate-50/50 flex items-center justify-between">
+                        <div class="flex items-center space-x-3">
+                            <div id="motorIconBg" class="w-10 h-10 rounded-xl bg-slate-200 text-slate-500 flex items-center justify-center transition">
+                                <i class="fa-solid fa-gear text-lg"></i>
+                            </div>
+                            <div>
+                                <h4 class="font-semibold text-sm text-slate-800">มอเตอร์กลับไข่</h4>
+                                <p class="text-xs text-slate-500">Sprocket Motor Drive</p>
+                            </div>
+                        </div>
+                        <button onclick="triggerManualTurn()" class="px-3 py-1.5 text-xs font-bold rounded-lg bg-brand-50 text-brand-600 hover:bg-brand-100 transition border border-brand-200">
+                            ทดสอบหมุน
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Quick Charts Preview Row -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <!-- Temperature Real-time Chart -->
+                <div class="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-sm">
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="font-bold text-slate-800 text-sm flex items-center gap-2">
+                            <i class="fa-solid fa-chart-area text-rose-500"></i> กราฟอุณหภูมิสด (°C)
+                        </h3>
+                        <span class="text-xs text-slate-400">อัปเดตทุก 2 วินาที</span>
+                    </div>
+                    <div class="h-48 w-full">
+                        <canvas id="miniTempChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Humidity Real-time Chart -->
+                <div class="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-sm">
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="font-bold text-slate-800 text-sm flex items-center gap-2">
+                            <i class="fa-solid fa-chart-area text-sky-500"></i> กราฟความชื้นสัมพัทธ์สด (%)
+                        </h3>
+                        <span class="text-xs text-slate-400">อัปเดตทุก 2 วินาที</span>
+                    </div>
+                    <div class="h-48 w-full">
+                        <canvas id="miniHumChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- ================= PAGE 2: STATISTICS & HISTORY ================= -->
+        <div id="page-stats" class="tab-page hidden space-y-6">
+            <div class="bg-white rounded-2xl p-6 border border-slate-200/80 shadow-sm">
+                <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+                    <div>
+                        <h2 class="font-bold text-lg text-slate-800 flex items-center gap-2">
+                            <i class="fa-solid fa-chart-column text-brand-600"></i> สถิติย้อนหลังและอัตราการสำเร็จ
+                        </h2>
+                        <p class="text-xs text-slate-500">วิเคราะห์ข้อมูลอุณหภูมิ ความชื้น และบันทึกประวัติการฟักไข่ในแต่ละชุด</p>
+                    </div>
+                    <button onclick="downloadCSVReport()" class="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white font-semibold rounded-xl text-xs flex items-center gap-2 shadow-sm transition">
+                        <i class="fa-solid fa-file-csv"></i> ดาวน์โหลดรายงาน (CSV)
+                    </button>
+                </div>
+
+                <!-- Main Detailed Chart -->
+                <div class="h-72 w-full mb-6">
+                    <canvas id="fullHistoryChart"></canvas>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 border-t border-slate-100 pt-6">
+                    <div class="p-4 rounded-xl bg-slate-50 border border-slate-100 text-center">
+                        <p class="text-xs text-slate-500">อัตราฟักสำเร็จเฉลี่ย</p>
+                        <p class="text-2xl font-bold text-emerald-600 mt-1">92.4%</p>
+                        <p class="text-[11px] text-slate-400">จาก 5 รอบล่าสุด</p>
+                    </div>
+                    <div class="p-4 rounded-xl bg-slate-50 border border-slate-100 text-center">
+                        <p class="text-xs text-slate-500">ความนิ่งของอุณหภูมิ</p>
+                        <p class="text-2xl font-bold text-brand-600 mt-1">±0.2 °C</p>
+                        <p class="text-[11px] text-slate-400">เสถียรภาพสูงมาก</p>
+                    </div>
+                    <div class="p-4 rounded-xl bg-slate-50 border border-slate-100 text-center">
+                        <p class="text-xs text-slate-500">จำนวนไข่ที่ฟักรอดรวม</p>
+                        <p class="text-2xl font-bold text-slate-800 mt-1">115 ฟอง</p>
+                        <p class="text-[11px] text-slate-400">จากทั้งหมด 125 ฟอง</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Hatching Batch Log Table -->
+            <div class="bg-white rounded-2xl p-6 border border-slate-200/80 shadow-sm overflow-hidden">
+                <h3 class="font-bold text-slate-800 text-base mb-4">ประวัติการฟักไข่ย้อนหลัง (Batch Logs)</h3>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse text-xs sm:text-sm">
+                        <thead>
+                            <tr class="bg-slate-50 text-slate-500 uppercase font-semibold border-b border-slate-200">
+                                <th class="py-3 px-4">รหัสชุด (Batch)</th>
+                                <th class="py-3 px-4">ชนิดไข่</th>
+                                <th class="py-3 px-4">วันที่เริ่มฟัก</th>
+                                <th class="py-3 px-4">จำนวนฟอง</th>
+                                <th class="py-3 px-4">ฟักสำเร็จ</th>
+                                <th class="py-3 px-4">สถานะ</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-100 text-slate-700">
+                            <tr class="hover:bg-slate-50/50">
+                                <td class="py-3 px-4 font-bold text-brand-600">INC-2026-08</td>
+                                <td class="py-3 px-4">ไข่ไก่ชน</td>
+                                <td class="py-3 px-4">15 ส.ค. 2026</td>
+                                <td class="py-3 px-4">25</td>
+                                <td class="py-3 px-4 font-bold text-emerald-600">24 (96%)</td>
+                                <td class="py-3 px-4"><span class="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 font-medium text-xs">เสร็จสิ้น</span></td>
+                            </tr>
+                            <tr class="hover:bg-slate-50/50">
+                                <td class="py-3 px-4 font-bold text-brand-600">INC-2026-07</td>
+                                <td class="py-3 px-4">ไข่นกกระทา</td>
+                                <td class="py-3 px-4">01 ก.ค. 2026</td>
+                                <td class="py-3 px-4">50</td>
+                                <td class="py-3 px-4 font-bold text-emerald-600">46 (92%)</td>
+                                <td class="py-3 px-4"><span class="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 font-medium text-xs">เสร็จสิ้น</span></td>
+                            </tr>
+                            <tr class="hover:bg-slate-50/50">
+                                <td class="py-3 px-4 font-bold text-brand-600">INC-2026-06</td>
+                                <td class="py-3 px-4">ไข่เป็ดเทศ</td>
+                                <td class="py-3 px-4">10 พ.ค. 2026</td>
+                                <td class="py-3 px-4">30</td>
+                                <td class="py-3 px-4 font-bold text-emerald-600">27 (90%)</td>
+                                <td class="py-3 px-4"><span class="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 font-medium text-xs">เสร็จสิ้น</span></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- ================= PAGE 3: ESP32 / ARDUINO HARDWARE & CODE ================= -->
+        <div id="page-esp" class="tab-page hidden space-y-6">
+            <div class="bg-white rounded-2xl p-6 border border-slate-200/80 shadow-sm">
+                <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4">
+                    <div>
+                        <h2 class="font-bold text-lg text-slate-800 flex items-center gap-2">
+                            <i class="fa-solid fa-microchip text-brand-600"></i> โครงสร้างฮาร์ดแวร์ & โค้ด ESP32 / Arduino
+                        </h2>
+                        <p class="text-xs text-slate-500">อ้างอิงตามบล็อกไดอะแกรม Super Mom Smart Incubator (Arduino UNO + ESP8266/ESP32 + MCP23017 + DHT22)</p>
+                    </div>
+                    <span class="px-3 py-1 bg-brand-50 text-brand-700 font-bold text-xs rounded-lg border border-brand-200">
+                        Protocol: JSON HTTP POST / WebSocket
+                    </span>
+                </div>
+
+                <!-- Live JSON Stream Viewer -->
+                <div class="mb-6">
+                    <label class="block text-xs font-bold text-slate-600 mb-2">ข้อมูลที่รับส่งกับบอร์ด ESP32 (Live JSON Payload):</label>
+                    <pre id="jsonPayloadDisplay" class="bg-slate-900 text-emerald-400 p-4 rounded-xl text-xs font-mono overflow-x-auto border border-slate-800 shadow-inner">
+{
+  "device_id": "SMART_INCUBATOR_01",
+  "temperature": 37.5,
+  "humidity": 62.0,
+  "day_count": 18,
+  "heater_relay": false,
+  "fogger_relay": true,
+  "fan_relay": true,
+  "motor_status": "IDLE"
+}
+                    </pre>
+                </div>
+
+                <!-- Arduino / ESP32 Code Generator -->
+                <div>
+                    <div class="flex justify-between items-center mb-2">
+                        <label class="block text-xs font-bold text-slate-700">ซอร์สโค้ด Arduino C++ สำหรับคัดลอกลงบอร์ด:</label>
+                        <button onclick="copyArduinoCode()" class="text-xs text-brand-600 font-bold hover:underline flex items-center gap-1">
+                            <i class="fa-solid fa-copy"></i> คัดลอกโค้ดทั้งหมด
+                        </button>
+                    </div>
+                    <pre id="arduinoCodeSnippet" class="bg-slate-800 text-slate-200 p-4 rounded-xl text-xs font-mono overflow-x-auto max-h-80 border border-slate-700 leading-relaxed">
+// ============================================================
+// SMART INCUBATOR ESP32 / Arduino WiFi Firmware
+// Hardware: Arduino UNO / ESP32, DHT22, Ultrasonic Fogger,
+// Relay 220V (Heater), Relay 12V (Fan), Motor Turner, Buzzer
+// ============================================================
+
+#include &lt;WiFi.h&gt;
+#include &lt;HTTPClient.h&gt;
+#include "DHT.h"
+
+#define DHTPIN 4
+#define DHTTYPE DHT22
+
+#define RELAY_HEATER 16   // Relay 1: Heater (220V)
+#define RELAY_FOGGER 17   // Relay 2: Ultrasonic Maker
+#define RELAY_FAN    18   // Relay 3: 12V Air Fan
+#define MOTOR_PIN    19   // Motor Sprocket Egg Turner
+#define BUZZER_PIN   23   // Alarm Buzzer
+
+const char* ssid = "YOUR_WIFI_SSID";
+const char* password = "YOUR_WIFI_PASSWORD";
+const char* serverUrl = "https://your-incubator-api.com/api/telemetry";
+
+DHT dht(DHTPIN, DHTTYPE);
+
+void setup() {
+  Serial.begin(115200);
+  pinMode(RELAY_HEATER, OUTPUT);
+  pinMode(RELAY_FOGGER, OUTPUT);
+  pinMode(RELAY_FAN, OUTPUT);
+  pinMode(MOTOR_PIN, OUTPUT);
+  pinMode(BUZZER_PIN, OUTPUT);
+
+  dht.begin();
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("\nWiFi Connected!");
+}
+
+void loop() {
+  float temp = dht.readTemperature();
+  float hum = dht.readHumidity();
+
+  if (isnan(temp) || isnan(hum)) {
+    Serial.println("Failed to read from DHT sensor!");
+    return;
+  }
+
+  // Automatic Incubator Control Logic
+  if (temp &lt; 37.3) {
+    digitalWrite(RELAY_HEATER, HIGH); // Turn ON Heater
+  } else if (temp &gt; 37.7) {
+    digitalWrite(RELAY_HEATER, LOW);  // Turn OFF Heater
+  }
+
+  if (hum &lt; 55.0) {
+    digitalWrite(RELAY_FOGGER, HIGH); // Turn ON Fogger
+  } else if (hum &gt; 65.0) {
+    digitalWrite(RELAY_FOGGER, LOW);  // Turn OFF Fogger
+  }
+
+  // Send Telemetry to Web Dashboard
+  if (WiFi.status() == WL_CONNECTED) {
+    HTTPClient http;
+    http.begin(serverUrl);
+    http.addHeader("Content-Type", "application/json");
+
+    String json = "{\"temperature\":" + String(temp) + 
+                  ",\"humidity\":" + String(hum) + "}";
+    int httpResponseCode = http.POST(json);
+    http.end();
+  }
+
+  delay(2000);
+}
+                    </pre>
+                </div>
+            </div>
+        </div>
+
+        <!-- ================= PAGE 4: REPORT PROBLEM & LOGS ================= -->
+        <div id="page-report" class="tab-page hidden space-y-6">
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                
+                <!-- Issue Report Form -->
+                <div class="bg-white rounded-2xl p-6 border border-slate-200/80 shadow-sm">
+                    <h2 class="font-bold text-lg text-slate-800 mb-1 flex items-center gap-2">
+                        <i class="fa-solid fa-paper-plane text-brand-600"></i> รายงานปัญหาการใช้งาน / แจ้งซ่อม
+                    </h2>
+                    <p class="text-xs text-slate-500 mb-6">ส่งข้อมูลปัญหาการทำงานของตู้ฟักไข่ถึงทีมช่างดูแลระบบได้ทันที</p>
+
+                    <form onsubmit="handleProblemSubmit(event)" class="space-y-4">
+                        <div>
+                            <label class="block text-xs font-bold text-slate-700 mb-1">หมวดหมู่ปัญหา</label>
+                            <select id="issueType" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-500">
+                                <option value="sensor">เซ็นเซอร์ DHT22 อุณหภูมิ/ความชื้นเพี้ยน</option>
+                                <option value="heater">ระบบทำความร้อน (Heater) ไม่ทำงาน</option>
+                                <option value="motor">มอเตอร์กลับไข่ไม่หมุน</option>
+                                <option value="fogger">เครื่องทำความชื้น (Ultrasonic) น้ำไม่พ่น</option>
+                                <option value="wifi">การเชื่อมต่อ ESP32 หลุดบ่อย</option>
+                                <option value="other">ปัญหาอื่นๆ</option>
+                            </select>
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-bold text-slate-700 mb-1">ระดับความสำคัญ</label>
+                            <div class="flex gap-4 text-xs font-semibold">
+                                <label class="flex items-center gap-1.5 cursor-pointer">
+                                    <input type="radio" name="priority" value="normal" checked class="text-brand-600"> ปกติ
+                                </label>
+                                <label class="flex items-center gap-1.5 cursor-pointer text-amber-600">
+                                    <input type="radio" name="priority" value="warning" class="text-amber-600"> ปานกลาง
+                                </label>
+                                <label class="flex items-center gap-1.5 cursor-pointer text-rose-600">
+                                    <input type="radio" name="priority" value="urgent" class="text-rose-600"> ด่วนมาก (ไข่อยู่ในตู้)
+                                </label>
+                            </div>
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-bold text-slate-700 mb-1">รายละเอียดปัญหาที่พบ</label>
+                            <textarea id="issueDesc" rows="4" placeholder="ระบุอาการ เช่น อุณหภูมิตกเหลือ 35 องศา แล้วหลอดไฟไม่ติด..." required class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"></textarea>
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-bold text-slate-700 mb-1">เบอร์โทรติดต่อกลับ</label>
+                            <input type="tel" id="issuePhone" placeholder="08X-XXX-XXXX" required class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-500">
+                        </div>
+
+                        <button type="submit" class="w-full py-3 bg-brand-600 hover:bg-brand-700 text-white font-bold rounded-xl text-sm shadow-md transition flex justify-center items-center gap-2">
+                            <i class="fa-solid fa-paper-plane"></i> ส่งรายงานปัญหาทันที
+                        </button>
+                    </form>
+                </div>
+
+                <!-- Recent System Logs & Tickets -->
+                <div class="space-y-6">
+                    <!-- Tickets History -->
+                    <div class="bg-white rounded-2xl p-6 border border-slate-200/80 shadow-sm">
+                        <h3 class="font-bold text-slate-800 text-base mb-4 flex items-center justify-between">
+                            <span>รายการแจ้งปัญหาล่าสุด</span>
+                            <span class="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-normal">2 รายการ</span>
+                        </h3>
+                        
+                        <div class="space-y-3" id="ticketsList">
+                            <div class="p-3.5 rounded-xl border border-slate-100 bg-slate-50/50 flex justify-between items-start">
+                                <div>
+                                    <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-700 mb-1 inline-block">รอดำเนินการ</span>
+                                    <h4 class="font-semibold text-xs text-slate-800">เซ็นเซอร์ DHT22 อ่านค่าความชื้นแกว่ง</h4>
+                                    <p class="text-[11px] text-slate-500 mt-1">แจ้งเมื่อ 2 ชั่วโมงที่แล้ว • ความสำคัญ: ปกติ</p>
+                                </div>
+                                <span class="text-xs font-mono font-bold text-slate-400">#TK-8902</span>
+                            </div>
+
+                            <div class="p-3.5 rounded-xl border border-slate-100 bg-slate-50/50 flex justify-between items-start">
+                                <div>
+                                    <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-700 mb-1 inline-block">แก้ไขแล้ว</span>
+                                    <h4 class="font-semibold text-xs text-slate-800">เปลี่ยนรีเลย์ควบคุมหลอดความร้อน</h4>
+                                    <p class="text-[11px] text-slate-500 mt-1">แจ้งเมื่อ 5 วันที่แล้ว • ช่างเข้าแก้ไขสำเร็จ</p>
+                                </div>
+                                <span class="text-xs font-mono font-bold text-slate-400">#TK-8841</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- System Event Log -->
+                    <div class="bg-white rounded-2xl p-6 border border-slate-200/80 shadow-sm">
+                        <h3 class="font-bold text-slate-800 text-base mb-3">บันทึกเหตุการณ์ระบบ (System Event Log)</h3>
+                        <div id="eventLogContainer" class="space-y-2 text-xs font-mono max-h-48 overflow-y-auto pr-1">
+                            <div class="text-slate-500">[10:45:12] ESP32 Connected - Signal Strength -58dBm</div>
+                            <div class="text-emerald-600">[10:46:00] Egg Motor Turned Successfully (Angle: 45°)</div>
+                            <div class="text-slate-500">[10:48:30] Heater Relay Toggled OFF (Temp reached 37.6°C)</div>
+                            <div class="text-sky-600">[10:50:00] Ultrasonic Fogger Activated (Humidity 59%)</div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Mobile Bottom Navigation Bar (iOS / Android Style) -->
+    <div class="md:hidden fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-slate-200 z-50">
+        <div class="grid grid-cols-4 h-16">
+            <button onclick="switchTab('dashboard')" id="mobile-tab-dashboard" class="mobile-tab flex flex-col items-center justify-center text-brand-600 font-medium">
+                <i class="fa-solid fa-gauge-high text-lg"></i>
+                <span class="text-[10px] mt-1">หน้าหลัก</span>
+            </button>
+            <button onclick="switchTab('stats')" id="mobile-tab-stats" class="mobile-tab flex flex-col items-center justify-center text-slate-400 hover:text-slate-700 font-medium">
+                <i class="fa-solid fa-chart-line text-lg"></i>
+                <span class="text-[10px] mt-1">สถิติ</span>
+            </button>
+            <button onclick="switchTab('esp')" id="mobile-tab-esp" class="mobile-tab flex flex-col items-center justify-center text-slate-400 hover:text-slate-700 font-medium">
+                <i class="fa-solid fa-microchip text-lg"></i>
+                <span class="text-[10px] mt-1">ESP32</span>
+            </button>
+            <button onclick="switchTab('report')" id="mobile-tab-report" class="mobile-tab flex flex-col items-center justify-center text-slate-400 hover:text-slate-700 font-medium">
+                <i class="fa-solid fa-triangle-exclamation text-lg"></i>
+                <span class="text-[10px] mt-1">แจ้งปัญหา</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- MODAL 1: Urgent Hatching Notification Pop-up Modal -->
+    <div id="hatchModal" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-amber-100 transform transition-all text-center relative overflow-hidden">
+            <div class="w-20 h-20 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-4 text-4xl shadow-inner">
+                🐣
+            </div>
+            <h3 class="text-xl font-bold text-slate-800 mb-2">ไข่พร้อมฟักออกจากเปลือก!</h3>
+            <p class="text-sm text-slate-600 mb-6">
+                ระบบตรวจพบว่าถึงวันที่ <strong class="text-amber-600">18-21</strong> ของการฟักไข่แล้ว เพื่อเพิ่มอัตราการรอดสูงสุด โปรดปฏิบัติตามขั้นตอนดังนี้:
+            </p>
+
+            <div class="text-left bg-amber-50 rounded-2xl p-4 border border-amber-200 text-xs space-y-2 mb-6">
+                <div class="flex items-start gap-2 text-slate-700">
+                    <i class="fa-solid fa-circle-check text-emerald-500 mt-0.5"></i>
+                    <span><strong>หยุดระบบกลับไข่อัตโนมัติ:</strong> ป้องกันลูกเจี๊ยบได้รับบาดเจ็บ</span>
+                </div>
+                <div class="flex items-start gap-2 text-slate-700">
+                    <i class="fa-solid fa-circle-check text-emerald-500 mt-0.5"></i>
+                    <span><strong>เพิ่มความชื้นเป็น 65% - 75%:</strong> ป้องกันเยื่อหุ้มไข่แห้งติดตัวลูกไก่</span>
+                </div>
+                <div class="flex items-start gap-2 text-slate-700">
+                    <i class="fa-solid fa-circle-check text-emerald-500 mt-0.5"></i>
+                    <span><strong>เปิดช่องระบายอากาศ:</strong> เพื่อให้ออกซิเจนเพียงพอกับลูกไก่ที่เจาะเปลือก</span>
+                </div>
+            </div>
+
+            <div class="flex gap-3">
+                <button onclick="applyLockdownSettings()" class="flex-1 py-3 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl text-sm shadow transition">
+                    ปรับค่าอัตโนมัติ (Lockdown Mode)
+                </button>
+                <button onclick="closeHatchModal()" class="px-4 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-xl text-sm transition">
+                    รับทราบ
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL 2: Change Egg Preset Selection Modal -->
+    <div id="presetModal" class="hidden fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-100">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-lg font-bold text-slate-800">เลือกประเภทไข่สำหรับฟัก</h3>
+                <button onclick="closePresetModal()" class="text-slate-400 hover:text-slate-600 p-1">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
+                <!-- Chicken -->
+                <button onclick="selectPreset('chicken')" class="p-4 rounded-2xl border-2 border-brand-500 bg-brand-50/50 text-left hover:border-brand-600 transition">
+                    <span class="text-3xl block mb-2">🐔</span>
+                    <h4 class="font-bold text-sm text-slate-800">ไข่ไก่</h4>
+                    <p class="text-xs text-slate-500">21 วัน • 37.5°C</p>
+                </button>
+                <!-- Duck -->
+                <button onclick="selectPreset('duck')" class="p-4 rounded-2xl border-2 border-slate-200 hover:border-brand-500 text-left transition">
+                    <span class="text-3xl block mb-2">🦆</span>
+                    <h4 class="font-bold text-sm text-slate-800">ไข่เป็ด</h4>
+                    <p class="text-xs text-slate-500">28 วัน • 37.5°C</p>
+                </button>
+                <!-- Quail -->
+                <button onclick="selectPreset('quail')" class="p-4 rounded-2xl border-2 border-slate-200 hover:border-brand-500 text-left transition">
+                    <span class="text-3xl block mb-2">🐦</span>
+                    <h4 class="font-bold text-sm text-slate-800">ไข่นกกระทา</h4>
+                    <p class="text-xs text-slate-500">17 วัน • 37.8°C</p>
+                </button>
+            </div>
+
+            <div class="space-y-3 bg-slate-50 p-4 rounded-2xl border border-slate-100 text-xs">
+                <div class="flex justify-between">
+                    <span class="text-slate-500">วันที่ฟักปัจจุบัน:</span>
+                    <input type="number" id="inputDayCount" value="18" min="1" max="35" class="w-16 px-2 py-1 border rounded text-right font-bold text-slate-800">
+                </div>
+            </div>
+
+            <div class="mt-6 flex justify-end gap-2">
+                <button onclick="closePresetModal()" class="px-4 py-2 bg-slate-100 text-slate-600 text-xs font-bold rounded-xl">ยกเลิก</button>
+                <button onclick="savePresetSettings()" class="px-5 py-2 bg-brand-600 text-white text-xs font-bold rounded-xl shadow">บันทึกตั้งค่า</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ================= Global Incubator State =================
+        let incubatorState = {
+            preset: 'chicken', // 'chicken', 'duck', 'quail'
+            presetName: 'ไข่ไก่ (Chicken Egg)',
+            totalDays: 21,
+            dayCount: 18,
+            currentTemp: 37.5,
+            targetTemp: 37.5,
+            currentHum: 62.0,
+            targetHumMin: 55,
+            targetHumMax: 65,
+            isSimulating: true,
+            isAutoMode: true,
+            heaterState: false,
+            foggerState: true,
+            fanState: true,
+            motorState: false,
+            audioMuted: false,
+            nextTurnMinutes: 42
+        };
+
+        let tempHistory = [37.4, 37.5, 37.6, 37.5, 37.4, 37.5, 37.5, 37.6, 37.5, 37.5];
+        let humHistory = [60, 61, 63, 62, 62, 64, 63, 62, 61, 62];
+        let labelsHistory = ['10:41', '10:42', '10:43', '10:44', '10:45', '10:46', '10:47', '10:48', '10:49', '10:50'];
+
+        let miniTempChart, miniHumChart, fullChart;
+        let audioCtx = null;
+
+        // Initialize App on DOM Loaded
+        window.addEventListener('DOMContentLoaded', () => {
+            initCharts();
+            updateDashboardUI();
+            startRealtimeSimulation();
+            checkHatchAlerts();
+        });
+
+        // ================= Tab Switching Logic =================
+        function switchTab(tabId) {
+            // Hide all pages
+            document.querySelectorAll('.tab-page').forEach(page => page.classList.add('hidden'));
+            // Show target page
+            document.getElementById(`page-${tabId}`).classList.remove('hidden');
+
+            // Reset desktop tab styles
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.className = 'tab-btn px-4 py-2 text-sm font-semibold rounded-lg text-slate-600 hover:bg-slate-100 transition flex items-center gap-2';
+            });
+            const activeDesktopTab = document.getElementById(`tab-${tabId}`);
+            if (activeDesktopTab) {
+                activeDesktopTab.className = 'tab-btn px-4 py-2 text-sm font-semibold rounded-lg bg-brand-600 text-white shadow-sm flex items-center gap-2 transition';
+            }
+
+            // Reset mobile bottom nav styles
+            document.querySelectorAll('.mobile-tab').forEach(btn => {
+                btn.className = 'mobile-tab flex flex-col items-center justify-center text-slate-400 hover:text-slate-700 font-medium';
+            });
+            const activeMobileTab = document.getElementById(`mobile-tab-${tabId}`);
+            if (activeMobileTab) {
+                activeMobileTab.className = 'mobile-tab flex flex-col items-center justify-center text-brand-600 font-medium';
+            }
+        }
+
+        // ================= UI Render Helpers =================
+        function updateDashboardUI() {
+            document.getElementById('currentTemp').innerText = incubatorState.currentTemp.toFixed(1);
+            document.getElementById('currentHum').innerText = Math.round(incubatorState.currentHum);
+            document.getElementById('targetTempText').innerText = incubatorState.targetTemp.toFixed(1);
+            document.getElementById('targetHumText').innerText = `${incubatorState.targetHumMin}-${incubatorState.targetHumMax}`;
+            
+            // Days countdown calculation
+            const remaining = incubatorState.totalDays - incubatorState.dayCount;
+            document.getElementById('presetName').innerText = incubatorState.presetName;
+            document.getElementById('presetTotalDays').innerText = incubatorState.totalDays;
+            document.getElementById('dayProgressText').innerText = `วันที่ ${incubatorState.dayCount} จาก ${incubatorState.totalDays} วัน`;
+            document.getElementById('remainingDaysText').innerText = remaining > 0 ? `${remaining} วัน` : 'ครบกำหนดฟักวันนี้!';
+            
+            const progressPct = Math.min(100, Math.max(0, (incubatorState.dayCount / incubatorState.totalDays) * 100));
+            document.getElementById('dayProgressBar').style.width = `${progressPct}%`;
+
+            // Actuator Badges
+            updateActuatorBadge('heaterStatusText', 'heaterIconBg', incubatorState.heaterState, 'bg-rose-500 text-white', 'bg-slate-200 text-slate-600', 'bg-rose-100 text-rose-600');
+            updateActuatorBadge('foggerStatusText', 'foggerIconBg', incubatorState.foggerState, 'bg-sky-500 text-white', 'bg-slate-200 text-slate-600', 'bg-sky-100 text-sky-600');
+            
+            // JSON Payload Display
+            const payload = {
+                device_id: "SMART_INCUBATOR_ESP32",
+                temperature: Number(incubatorState.currentTemp.toFixed(1)),
+                humidity: Number(incubatorState.currentHum.toFixed(1)),
+                day_count: incubatorState.dayCount,
+                heater_relay: incubatorState.heaterState,
+                fogger_relay: incubatorState.foggerState,
+                fan_relay: incubatorState.fanState,
+                motor_status: incubatorState.motorState ? "TURNING" : "IDLE"
+            };
+            document.getElementById('jsonPayloadDisplay').innerText = JSON.stringify(payload, null, 2);
+        }
+
+        function updateActuatorBadge(textId, iconBgId, isOn, onClass, offClass, iconOnClass) {
+            const textEl = document.getElementById(textId);
+            const iconEl = document.getElementById(iconBgId);
+            if (isOn) {
+                textEl.innerText = 'ON';
+                textEl.className = `px-2.5 py-1 text-xs font-bold rounded-lg ${onClass}`;
+                if (iconEl) iconEl.className = `w-10 h-10 rounded-xl flex items-center justify-center transition ${iconOnClass}`;
+            } else {
+                textEl.innerText = 'OFF';
+                textEl.className = `px-2.5 py-1 text-xs font-bold rounded-lg ${offClass}`;
+                if (iconEl) iconEl.className = `w-10 h-10 rounded-xl bg-slate-100 text-slate-400 flex items-center justify-center transition`;
+            }
+        }
+
+        // ================= STREAMING_CHUNK:Chart Initialization & Live Updates... =================
+        function initCharts() {
+            const miniTempCtx = document.getElementById('miniTempChart').getContext('2d');
+            miniTempChart = new Chart(miniTempCtx, {
+                type: 'line',
+                data: {
+                    labels: labelsHistory,
+                    datasets: [{
+                        label: 'Temp (°C)',
+                        data: tempHistory,
+                        borderColor: '#f43f5e',
+                        backgroundColor: 'rgba(244, 63, 94, 0.1)',
+                        borderWidth: 2,
+                        fill: true,
+                        tension: 0.4,
+                        pointRadius: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        y: { min: 35.0, max: 40.0, grid: { color: '#f1f5f9' } },
+                        x: { grid: { display: false } }
+                    }
+                }
+            });
+
+            const miniHumCtx = document.getElementById('miniHumChart').getContext('2d');
+            miniHumChart = new Chart(miniHumCtx, {
+                type: 'line',
+                data: {
+                    labels: labelsHistory,
+                    datasets: [{
+                        label: 'Humidity (%)',
+                        data: humHistory,
+                        borderColor: '#0284c7',
+                        backgroundColor: 'rgba(2, 132, 199, 0.1)',
+                        borderWidth: 2,
+                        fill: true,
+                        tension: 0.4,
+                        pointRadius: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        y: { min: 40, max: 90, grid: { color: '#f1f5f9' } },
+                        x: { grid: { display: false } }
+                    }
+                }
+            });
+
+            const fullCtx = document.getElementById('fullHistoryChart').getContext('2d');
+            fullChart = new Chart(fullCtx, {
+                type: 'line',
+                data: {
+                    labels: labelsHistory,
+                    datasets: [
+                        {
+                            label: 'อุณหภูมิ (°C)',
+                            data: tempHistory,
+                            borderColor: '#f43f5e',
+                            yAxisID: 'yTemp',
+                            tension: 0.3
+                        },
+                        {
+                            label: 'ความชื้น (%)',
+                            data: humHistory,
+                            borderColor: '#0284c7',
+                            yAxisID: 'yHum',
+                            tension: 0.3
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        yTemp: { type: 'linear', position: 'left', min: 35, max: 40 },
+                        yHum: { type: 'linear', position: 'right', min: 40, max: 90, grid: { display: false } }
+                    }
+                }
+            });
+        }
+
+        // ================= STREAMING_CHUNK:Real-time Simulation Engine... =================
+        function startRealtimeSimulation() {
+            setInterval(() => {
+                if (!incubatorState.isSimulating) return;
+
+                // Micro fluctuations for realistic live incubator physics
+                const tempDelta = (Math.random() - 0.49) * 0.15;
+                incubatorState.currentTemp = Math.min(38.8, Math.max(36.2, incubatorState.currentTemp + tempDelta));
+
+                const humDelta = (Math.random() - 0.48) * 0.6;
+                incubatorState.currentHum = Math.min(78, Math.max(50, incubatorState.currentHum + humDelta));
+
+                // Thermostat & Humidistat auto control logic simulation
+                if (incubatorState.isAutoMode) {
+                    incubatorState.heaterState = incubatorState.currentTemp < incubatorState.targetTemp;
+                    incubatorState.foggerState = incubatorState.currentHum < incubatorState.targetHumMin;
+                }
+
+                // Push new data point to charts
+                const now = new Date();
+                const timeStr = `${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}:${now.getSeconds().toString().padStart(2,'0')}`;
+                
+                labelsHistory.push(timeStr);
+                tempHistory.push(Number(incubatorState.currentTemp.toFixed(1)));
+                humHistory.push(Number(incubatorState.currentHum.toFixed(1)));
+
+                if (labelsHistory.length > 12) {
+                    labelsHistory.shift();
+                    tempHistory.shift();
+                    humHistory.shift();
+                }
+
+                miniTempChart.update('none');
+                miniHumChart.update('none');
+                fullChart.update('none');
+
+                updateDashboardUI();
+            }, 2000);
+        }
+
+        // ================= Hatch Alert Triggering & Audio System =================
+        function checkHatchAlerts() {
+            const hatchAlertBanner = document.getElementById('hatchAlertBanner');
+            const isHatchingSoon = (incubatorState.totalDays - incubatorState.dayCount) <= 3;
+            
+            if (isHatchingSoon) {
+                hatchAlertBanner.classList.remove('hidden');
+                document.getElementById('bannerDayNum').innerText = incubatorState.dayCount;
+                playBeepSound();
+            } else {
+                hatchAlertBanner.classList.add('hidden');
+            }
+        }
+
+        function playBeepSound() {
+            if (incubatorState.audioMuted) return;
+            try {
+                if (!audioCtx) {
+                    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                }
+                if (audioCtx.state === 'suspended') {
+                    audioCtx.resume();
+                }
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(880, audioCtx.currentTime); // A5 note
+                gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.5);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start();
+                osc.stop(audioCtx.currentTime + 0.5);
+            } catch(e) {
+                console.log('Audio playback prevented by browser policy');
+            }
+        }
+
+        function toggleAudioMute() {
+            incubatorState.audioMuted = !incubatorState.audioMuted;
+            const icon = document.getElementById('muteIcon');
+            if (incubatorState.audioMuted) {
+                icon.className = 'fa-solid fa-bell-slash text-slate-400';
+            } else {
+                icon.className = 'fa-solid fa-bell text-brand-600';
+                playBeepSound();
+            }
+        }
+
+        // Modal triggers
+        function openHatchModal() {
+            playBeepSound();
+            document.getElementById('hatchModal').classList.remove('hidden');
+        }
+        function closeHatchModal() {
+            document.getElementById('hatchModal').classList.add('hidden');
+        }
+        function applyLockdownSettings() {
+            incubatorState.targetHumMin = 65;
+            incubatorState.targetHumMax = 75;
+            incubatorState.motorState = false;
+            incubatorState.foggerState = true;
+            updateDashboardUI();
+            closeHatchModal();
+            appendLogEvent('Lockdown Mode Activated: Egg turner paused, target humidity raised to 65-75%');
+        }
+
+        function openPresetModal() {
+            document.getElementById('presetModal').classList.remove('hidden');
+        }
+        function closePresetModal() {
+            document.getElementById('presetModal').classList.add('hidden');
+        }
+        function selectPreset(type) {
+            if (type === 'chicken') {
+                incubatorState.preset = 'chicken';
+                incubatorState.presetName = 'ไข่ไก่ (Chicken Egg)';
+                incubatorState.totalDays = 21;
+                incubatorState.targetTemp = 37.5;
+            } else if (type === 'duck') {
+                incubatorState.preset = 'duck';
+                incubatorState.presetName = 'ไข่เป็ด (Duck Egg)';
+                incubatorState.totalDays = 28;
+                incubatorState.targetTemp = 37.5;
+            } else if (type === 'quail') {
+                incubatorState.preset = 'quail';
+                incubatorState.presetName = 'ไข่นกกระทา (Quail Egg)';
+                incubatorState.totalDays = 17;
+                incubatorState.targetTemp = 37.8;
+            }
+        }
+        function savePresetSettings() {
+            const val = parseInt(document.getElementById('inputDayCount').value) || 1;
+            incubatorState.dayCount = val;
+            updateDashboardUI();
+            checkHatchAlerts();
+            closePresetModal();
+        }
+
+        function toggleSimulation() {
+            incubatorState.isSimulating = !incubatorState.isSimulating;
+            const text = document.getElementById('simStatusText');
+            if (incubatorState.isSimulating) {
+                text.innerText = 'จำลองข้อมูล: เปิด';
+            } else {
+                text.innerText = 'จำลองข้อมูล: ปิด';
+            }
+        }
+
+        function setControlMode(mode) {
+            incubatorState.isAutoMode = (mode === 'auto');
+            const autoBtn = document.getElementById('modeAutoBtn');
+            const manualBtn = document.getElementById('modeManualBtn');
+            if (mode === 'auto') {
+                autoBtn.className = 'px-3 py-1.5 rounded-lg bg-white shadow-sm text-brand-600 transition';
+                manualBtn.className = 'px-3 py-1.5 rounded-lg text-slate-500 hover:text-slate-800 transition';
+            } else {
+                manualBtn.className = 'px-3 py-1.5 rounded-lg bg-white shadow-sm text-brand-600 transition';
+                autoBtn.className = 'px-3 py-1.5 rounded-lg text-slate-500 hover:text-slate-800 transition';
+            }
+        }
+
+        function triggerManualTurn() {
+            incubatorState.motorState = true;
+            updateDashboardUI();
+            appendLogEvent('Manual Egg Turner Activated (Sprocket Motor Working)');
+            setTimeout(() => {
+                incubatorState.motorState = false;
+                updateDashboardUI();
+            }, 3000);
+        }
+
+        function appendLogEvent(text) {
+            const container = document.getElementById('eventLogContainer');
+            const now = new Date();
+            const timeStr = `${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}:${now.getSeconds().toString().padStart(2,'0')}`;
+            const div = document.createElement('div');
+            div.className = 'text-slate-600';
+            div.innerText = `[${timeStr}] ${text}`;
+            container.prepend(div);
+        }
+
+        // Handle Issue Submission
+        function handleProblemSubmit(e) {
+            e.preventDefault();
+            const type = document.getElementById('issueType').value;
+            const desc = document.getElementById('issueDesc').value;
+            const ticketId = `#TK-${Math.floor(1000 + Math.random() * 9000)}`;
+
+            const ticketsList = document.getElementById('ticketsList');
+            const newTicket = document.createElement('div');
+            newTicket.className = 'p-3.5 rounded-xl border border-brand-100 bg-brand-50/40 flex justify-between items-start';
+            newTicket.innerHTML = `
+                <div>
+                    <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-700 mb-1 inline-block">รับเรื่องแล้ว</span>
+                    <h4 class="font-semibold text-xs text-slate-800">${desc.substring(0, 35)}...</h4>
+                    <p class="text-[11px] text-slate-500 mt-1">ส่งเมื่อสักครู่ • ส่งเรื่องถึงทีมช่างเรียบร้อย</p>
+                </div>
+                <span class="text-xs font-mono font-bold text-brand-600">${ticketId}</span>
+            `;
+            ticketsList.prepend(newTicket);
+            document.getElementById('issueDesc').value = '';
+            appendLogEvent(`Report submitted: ${ticketId}`);
+        }
+
+        function copyArduinoCode() {
+            const codeText = document.getElementById('arduinoCodeSnippet').innerText;
+            const textarea = document.createElement('textarea');
+            textarea.value = codeText;
+            document.body.appendChild(textarea);
+            textarea.select();
+            document.execCommand('copy');
+            document.body.removeChild(textarea);
+            alertCustom('คัดลอกซอร์สโค้ด Arduino เรียบร้อยแล้ว!');
+        }
+
+        function downloadCSVReport() {
+            let csvContent = "data:text/csv;charset=utf-8,Time,Temperature_C,Humidity_Pct\n";
+            for(let i=0; i<labelsHistory.length; i++) {
+                csvContent += `${labelsHistory[i]},${tempHistory[i]},${humHistory[i]}\n`;
+            }
+            const encodedUri = encodeURI(csvContent);
+            const link = document.createElement("a");
+            link.setAttribute("href", encodedUri);
+            link.setAttribute("download", "incubator_telemetry_report.csv");
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        function alertCustom(msg) {
+            const toast = document.createElement('div');
+            toast.className = 'fixed top-20 right-4 z-50 bg-slate-800 text-white text-xs font-bold px-4 py-3 rounded-xl shadow-xl border border-slate-700 transition transform animate-bounce';
+            toast.innerText = msg;
+            document.body.appendChild(toast);
+            setTimeout(() => toast.remove(), 3000);
+        }
+    </script>
+</body>
+</html>
