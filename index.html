@@ -815,8 +815,8 @@ void loop() {
         window.addEventListener('DOMContentLoaded', () => {
             initCharts();
             updateDashboardUI();
-            startRealtimeSimulation();
-            checkHatchAlerts();
+            // startRealtimeSimulation();
+       checkHatchAlerts();
         });
 
         // ================= Tab Switching Logic =================
@@ -1220,6 +1220,35 @@ void loop() {
             document.body.appendChild(toast);
             setTimeout(() => toast.remove(), 3000);
         }
+        // ===== ดึงข้อมูลจริงจาก ThingSpeak =====
+const TS_CHANNEL_ID = "3522579";
+
+async function fetchFromThingSpeak() {
+    try {
+        const url = `https://api.thingspeak.com/channels/${TS_CHANNEL_ID}/feeds/last.json`;
+        const r = await fetch(url, { cache: "no-store" });
+        if (!r.ok) throw new Error("ThingSpeak HTTP " + r.status);
+        const f = await r.json();
+        if (!f || f.field1 == null) return;   // ยังไม่มีข้อมูล
+
+        const day = parseInt(f.field3);
+        incubatorState.currentTemp = parseFloat(f.field1);
+        incubatorState.currentHum  = parseFloat(f.field2);
+        incubatorState.dayCount    = day;
+        incubatorState.fanState    = (f.field4 === "1" || f.field5 === "1");
+        incubatorState.heaterState = (f.field6 === "1");
+        incubatorState.foggerState = (f.field7 === "1");
+        incubatorState.targetHumMin = day >= 18 ? 65 : 50;
+        incubatorState.targetHumMax = day >= 18 ? 70 : 55;
+
+        updateDashboardUI();
+    } catch (e) {
+        console.error("ดึงข้อมูลไม่สำเร็จ", e);
+    }
+}
+
+fetchFromThingSpeak();                    // ดึงทันทีตอนเปิดเว็บ
+setInterval(fetchFromThingSpeak, 20000);  // แล้วดึงซ้ำทุก 20 วินาที
     </script>
 </body>
 </html>
