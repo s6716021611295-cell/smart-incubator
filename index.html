@@ -1249,6 +1249,33 @@ async function fetchFromThingSpeak() {
 
 fetchFromThingSpeak();                    // ดึงทันทีตอนเปิดเว็บ
 setInterval(fetchFromThingSpeak, 20000);  // แล้วดึงซ้ำทุก 20 วินาที
+
+        // ===== โหลดประวัติจริงจาก ThingSpeak มาแทนข้อมูลปลอม =====
+async function loadHistory() {
+    try {
+        const url = `https://api.thingspeak.com/channels/${TS_CHANNEL_ID}/feeds.json?results=30`;
+        const r = await fetch(url, { cache: "no-store" });
+        const j = await r.json();
+        const feeds = j.feeds.filter(x => x.field1 != null);
+        if (feeds.length === 0) return;
+
+        labelsHistory.length = 0;
+        tempHistory.length = 0;
+        humHistory.length = 0;
+        feeds.forEach(x => {
+            const d = new Date(x.created_at);
+            labelsHistory.push(d.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }));
+            tempHistory.push(parseFloat(x.field1));
+            humHistory.push(parseFloat(x.field2));
+        });
+
+        Object.values(Chart.instances).forEach(c => c.update());
+    } catch (e) {
+        console.error("โหลดประวัติไม่สำเร็จ", e);
+    }
+}
+loadHistory();
+setInterval(loadHistory, 20000);
     </script>
 </body>
 </html>
