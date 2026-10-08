@@ -1276,6 +1276,50 @@ async function loadHistory() {
 }
 loadHistory();
 setInterval(loadHistory, 20000);
+        // ===== ปุ่มปิดพัดลมจากเว็บ (เขียน Field 8) =====
+const TS_WRITE_KEY = "7N597T9SEI4DRHV2";
+let fanOff = false;
+let fanTimer = null;
+
+async function sendFanCommand(v) {
+    try {
+        const r = await fetch(`https://api.thingspeak.com/update?api_key=${TS_WRITE_KEY}&field8=${v}`, { cache: "no-store" });
+        const t = (await r.text()).trim();
+        return t !== "0";
+    } catch (e) {
+        console.error("ส่งคำสั่งไม่สำเร็จ", e);
+        return false;
+    }
+}
+
+function setFanBtn(btn) {
+    btn.textContent = fanOff ? "กลับโหมดอัตโนมัติ" : "ปิดพัดลม (10 นาที)";
+    btn.className = "mt-2 px-3 py-1 rounded-lg text-xs font-bold text-white " + (fanOff ? "bg-emerald-600" : "bg-rose-500");
+}
+
+function createFanButton() {
+    const btn = document.createElement("button");
+    setFanBtn(btn);
+    btn.onclick = async () => {
+        btn.disabled = true;
+        const ok = await sendFanCommand(fanOff ? 0 : 1);
+        btn.disabled = false;
+        if (!ok) { alert("ส่งคำสั่งไม่สำเร็จ ลองใหม่อีกครั้งใน 15 วินาที"); return; }
+        fanOff = !fanOff;
+        clearTimeout(fanTimer);
+        if (fanOff) fanTimer = setTimeout(() => { fanOff = false; setFanBtn(btn); }, 600000);
+        setFanBtn(btn);
+        alert(fanOff ? "ส่งคำสั่งปิดพัดลมแล้ว (ตู้จะทำตามภายใน ~30 วินาที)" : "ส่งคำสั่งกลับอัตโนมัติแล้ว");
+    };
+    const label = [...document.querySelectorAll('*')].find(e => e.children.length === 0 && e.textContent.trim().startsWith('12V Air Circulation'));
+    if (label && label.parentElement) {
+        label.parentElement.appendChild(btn);
+    } else {
+        btn.style.cssText = "position:fixed;bottom:80px;right:16px;z-index:50";
+        document.body.appendChild(btn);
+    }
+}
+createFanButton();
     </script>
 </body>
 </html>
